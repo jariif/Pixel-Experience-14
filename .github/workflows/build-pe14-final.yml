@@ -1,4 +1,4 @@
-name: Build Pixel Experience 14 (GApps) - Safe Version
+name: Build Pixel Experience 14 (GApps) - v4 Upload
 
 on:
   workflow_dispatch:   # Manual trigger
@@ -55,7 +55,8 @@ jobs:
         make bacon -j$(nproc)
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: PixelExperience-14-gts210velte-GApps
         path: ~/android/pe14/out/target/product/gts210velte/*.zip
+        
