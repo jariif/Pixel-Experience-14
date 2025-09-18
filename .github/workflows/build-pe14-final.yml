@@ -1,0 +1,62 @@
+name: Build Pixel Experience 14 (GApps) - Safe Version
+
+on:
+  workflow_dispatch:   # Manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 480  # 8 hours max
+
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v3
+
+    - name: Setup Build Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git \
+        gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev liblz4-tool libncurses5-dev \
+        libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
+        squashfs-tools xsltproc zip zlib1g-dev unzip fontconfig
+        mkdir -p ~/android/pe14
+        cd ~/android/pe14
+
+    - name: Repo Init (LOS21 manifest)
+      run: |
+        cd ~/android/pe14
+        repo init -u https://github.com/retiredtab/LineageOS-build-manifests -b main
+        repo sync -j$(nproc) --force-sync
+
+    - name: Clone Device Tree, Kernel & Vendor
+      run: |
+        cd ~/android/pe14
+        # Device Tree
+        git clone https://github.com/retiredtab/msm8976-common.git -b lineage-21 device/samsung/gts210velte
+        # Kernel Source
+        git clone https://github.com/syphyr/android_kernel_samsung_msm8976.git -b lineage-16.0 kernel/samsung/gts210velte
+        # Vendor Tree
+        git clone https://github.com/retiredtab/proprietary_vendor_samsung_msm8976.git vendor/samsung/gts210velte
+
+    - name: Configure Device & Kernel
+      run: |
+        cd ~/android/pe14
+        echo "TARGET_KERNEL_SOURCE := kernel/samsung/gts210velte" >> device/samsung/gts210velte/BoardConfig.mk
+        echo "TARGET_KERNEL_CONFIG := gts210velte_defconfig" >> device/samsung/gts210velte/BoardConfig.mk
+        echo "TARGET_USE_GAPPS := true" >> device/samsung/gts210velte/BoardConfig.mk
+        # On-screen navigation bar enabled
+        echo "BOARD_NAVIGATION_BAR := true" >> device/samsung/gts210velte/BoardConfig.mk
+
+    - name: Build ROM
+      run: |
+        cd ~/android/pe14
+        . build/envsetup.sh
+        lunch aosp_gts210velte-userdebug
+        make bacon -j$(nproc)
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: PixelExperience-14-gts210velte-GApps
+        path: ~/android/pe14/out/target/product/gts210velte/*.zip
+        
