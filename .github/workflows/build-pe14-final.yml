@@ -59,4 +59,3 @@ jobs:
       with:
         name: PixelExperience-14-gts210velte-GApps
         path: ~/android/pe14/out/target/product/gts210velte/*.zip
-        
