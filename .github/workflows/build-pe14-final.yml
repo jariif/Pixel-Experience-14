@@ -1,67 +1,69 @@
-name: Build Pixel Experience 14 (GApps) - Ready-to-Run
+name: Build Evolution X (Custom Trees)
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 480  # 8 hours max
+    timeout-minutes: 480
 
     steps:
-    - name: Checkout Repo
-      uses: actions/checkout@v3
+      # 1️⃣ Checkout your repo
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup Build Environment & Repo
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git \
-        gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev liblz4-tool libncurses5-dev \
-        libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
-        squashfs-tools xsltproc zip zlib1g-dev unzip fontconfig
-        mkdir -p ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        export PATH=~/bin:$PATH
-        repo --version
-        mkdir -p ~/android/pe14
-        cd ~/android/pe14
+      # 2️⃣ Install Dependencies + Repo Tool
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib git \
+            gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev liblz4-tool \
+            libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            unzip fontconfig python3 repo openjdk-11-jdk
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "export PATH=~/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Repo Init (LOS21 manifest)
-      run: |
-        cd ~/android/pe14
-        repo init -u https://github.com/retiredtab/LineageOS-build-manifests -b main
-        repo sync -j$(nproc) --force-sync
+      # 3️⃣ Initialize Evolution X Repo
+      - name: Initialize Repo
+        run: |
+          mkdir -p ~/android/evo
+          cd ~/android/evo
+          repo init -u https://github.com/Evolution-X/manifest -b bka --git-lfs
 
-    - name: Clone Device Tree, Kernel & Vendor
-      run: |
-        cd ~/android/pe14
-        # Device Tree
-        git clone https://github.com/retiredtab/msm8976-common.git -b lineage-21 device/samsung/gts210velte
-        # Kernel Source
-        git clone https://github.com/syphyr/android_kernel_samsung_msm8976.git -b lineage-16.0 kernel/samsung/gts210velte
-        # Vendor Tree
-        git clone https://github.com/retiredtab/proprietary_vendor_samsung_msm8976.git vendor/samsung/gts210velte
+      # 4️⃣ Sync Source
+      - name: Sync Source
+        run: |
+          cd ~/android/evo
+          repo sync -j$(nproc) --force-sync --no-clone-bundle --no-tags
 
-    - name: Configure Device & Kernel
-      run: |
-        cd ~/android/pe14
-        echo "TARGET_KERNEL_SOURCE := kernel/samsung/gts210velte" >> device/samsung/gts210velte/BoardConfig.mk
-        echo "TARGET_KERNEL_CONFIG := gts210velte_defconfig" >> device/samsung/gts210velte/BoardConfig.mk
-        echo "TARGET_USE_GAPPS := true" >> device/samsung/gts210velte/BoardConfig.mk
-        # On-screen navigation bar enabled
-        echo "BOARD_NAVIGATION_BAR := true" >> device/samsung/gts210velte/BoardConfig.mk
+      # 5️⃣ Add Device Trees / Kernel / Vendor
+      - name: Setup Custom Trees
+        run: |
+          cd ~/android/evo
+          # Device tree (LOS 21)
+          git clone https://github.com/retiredtab/msm8976-common -b lineage-21 device/samsung/msm8976-common
+          # Kernel source (LOS 16)
+          git clone https://github.com/syphyr/android_kernel_samsung_msm8976 -b lineage-16.0 kernel/samsung/msm8976
+          # Vendor tree (LOS 21)
+          git clone https://github.com/retiredtab/proprietary_vendor_samsung_msm8976 vendor/samsung/msm8976
 
-    - name: Build ROM
-      run: |
-        cd ~/android/pe14
-        . build/envsetup.sh
-        lunch aosp_gts210velte-userdebug
-        make bacon -j$(nproc)
+      # 6️⃣ Build Evolution X
+      - name: Build ROM
+        run: |
+          cd ~/android/evo
+          source build/envsetup.sh
+          lunch evolution_gts210velte-userdebug   # <-- তোর device codename বসাও
+          mka bacon -j$(nproc)
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: PixelExperience-14-gts210velte-GApps
-        path: ~/android/pe14/out/target/product/gts210velte/*.zip
-        
+      # 7️⃣ Upload ROM zip
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: evo-rom
+          path: ~/android/evo/out/target/product/*/*.zip
+          
