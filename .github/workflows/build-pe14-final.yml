@@ -1,4 +1,4 @@
-name: Build Evolution X (Custom Trees)
+name: Ultra-safe Build Evolution X (Samsung Trees)
 
 on:
   workflow_dispatch:
@@ -9,12 +9,12 @@ jobs:
     timeout-minutes: 480
 
     steps:
-      # 1️⃣ Checkout your repo
+      # 1️⃣ Checkout repo
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2️⃣ Install Dependencies + Repo Tool
-      - name: Install Build Dependencies
+      # 2️⃣ Install Dependencies + repo + git-lfs
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -22,7 +22,8 @@ jobs:
             gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev liblz4-tool \
             libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
             lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
-            unzip fontconfig python3 repo openjdk-11-jdk
+            unzip fontconfig python3 repo openjdk-11-jdk git-lfs
+          git lfs install
           mkdir -p ~/bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
@@ -33,37 +34,59 @@ jobs:
         run: |
           mkdir -p ~/android/evo
           cd ~/android/evo
-          repo init -u https://github.com/Evolution-X/manifest -b bka --git-lfs
+          repo init -u https://github.com/Evolution-X/manifest -b bka
 
       # 4️⃣ Sync Source
       - name: Sync Source
         run: |
           cd ~/android/evo
-          repo sync -j$(nproc) --force-sync --no-clone-bundle --no-tags
+          repo sync -j$(nproc) --force-sync --no-clone-bundle --no-tags || exit 1
 
-      # 5️⃣ Add Device Trees / Kernel / Vendor
-      - name: Setup Custom Trees
+      # 5️⃣ Pull Git LFS files
+      - name: Pull Git LFS
         run: |
           cd ~/android/evo
-          # Device tree (LOS 21)
+          git lfs pull || echo "No LFS files found or already pulled"
+
+      # 6️⃣ Clone Samsung Trees (Device / Kernel / Vendor)
+      - name: Setup Samsung Trees
+        run: |
+          cd ~/android/evo
           git clone https://github.com/retiredtab/msm8976-common -b lineage-21 device/samsung/msm8976-common
-          # Kernel source (LOS 16)
           git clone https://github.com/syphyr/android_kernel_samsung_msm8976 -b lineage-16.0 kernel/samsung/msm8976
-          # Vendor tree (LOS 21)
           git clone https://github.com/retiredtab/proprietary_vendor_samsung_msm8976 vendor/samsung/msm8976
 
-      # 6️⃣ Build Evolution X
-      - name: Build ROM
+      # 7️⃣ Pre-build sanity check
+      - name: Sanity Check
+        run: |
+          cd ~/android/evo
+          echo "Checking paths..."
+          [ -d device/samsung/msm8976-common ] || (echo "Device tree missing!" && exit 1)
+          [ -d kernel/samsung/msm8976 ] || (echo "Kernel missing!" && exit 1)
+          [ -d vendor/samsung/msm8976 ] || (echo "Vendor missing!" && exit 1)
+          java -version
+          repo --version
+
+      # 8️⃣ Build with retry
+      - name: Build ROM (retry 1 if fail)
         run: |
           cd ~/android/evo
           source build/envsetup.sh
-          lunch evolution_gts210velte-userdebug   # <-- তোর device codename বসাও
-          mka bacon -j$(nproc)
+          lunch evolution_gts210velte-userdebug
+          mka bacon -j$(nproc) || (echo "Build failed, retrying once..." && mka bacon -j$(nproc))
 
-      # 7️⃣ Upload ROM zip
+      # 9️⃣ Upload Build ZIP
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: evo-rom
           path: ~/android/evo/out/target/product/*/*.zip
+
+      # 🔟 Upload Logs (if any)
+      - name: Upload Build Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: ~/android/evo/out/logs/**/*.log
           
